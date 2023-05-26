@@ -1,0 +1,13 @@
+Personal Notes
+
+- B uses static/lexical scope
+- extrn = global, auto = local
+- no nested scope
+- all parameters are passed by value
+
+mapping from names to values
+
+       environment                             state
+names -------------> locations(variables) -------------> values
+
+- No qualified names (all names are identifiers).
