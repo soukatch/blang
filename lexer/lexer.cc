@@ -157,7 +157,8 @@ token lex(std::istream &input) {
 
   // consume all whitespace
   for (; input.good() && isspace(peek);
-       line += peek == static_cast<int>('\n'), peek = input.get())
+       line += static_cast<int>(peek == static_cast<int>('\n')),
+       peek = input.get())
     ;
 
   if (input.eof())
