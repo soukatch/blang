@@ -147,6 +147,11 @@ inline tag char_to_tag(int peek) noexcept {
              : tag::unkown;
 }
 
+[[noreturn]] inline void err_exit_msg(std::string_view msg = "") {
+  std::cout << "lex error on line " << line << ": " << msg << '\n';
+  exit(EXIT_FAILURE);
+}
+
 token lex(std::istream &input) {
   static int peek{static_cast<int>(' ')};
 
@@ -158,15 +163,26 @@ token lex(std::istream &input) {
   if (input.eof())
     return {tag::eof, std::nullopt};
 
-  if (isalpha(peek)) {
+  if (!input.good())
+    err_exit_msg("stream error");
+
+  if (isalpha(peek) || peek == '.' || peek == '_') {
+    // handle identifiers
+    // Variable names have one to eight ascii characters, chosen from A-Z, a-z,
+    // ., _, 0-9, and start with a non-digit. [1]
     std::string s{static_cast<char>(peek)};
-    for (; input.good() && isalnum(peek = input.get());
+    for (int i{1}; i++ < 8 && input.good() &&
+                   (isalnum(peek = input.get()) || peek == '.' || peek == '_');
          s += static_cast<char>(peek))
       ;
 
     /// TODO: cleaner error handling.
+    // error in the stream
     if (!input.good() && !input.eof())
-      exit(EXIT_FAILURE);
+      err_exit_msg("stream error");
+    // identifier length exceeds eight bytes.
+    if (s.size() == 8 && !isspace(peek))
+      err_exit_msg("variable name exceeds maximum length of 8 bytes");
 
     if (!words.contains(s))
       words.insert({s, {tag::identifier, s}});
@@ -180,28 +196,43 @@ token lex(std::istream &input) {
 
     /// TODO: cleaner error handling.
     if (!input.good() && !input.eof())
-      exit(EXIT_FAILURE);
+      err_exit_msg("stream error");
 
-    /// TODO: we need to make sure that the lexer hits an alpha before a
-    ///       whitespace or semi colon we return some kind of error - right now
-    ///       we're just ignoring that syntax error.
+    /// TODO: we need to make sure that the lexer hits a whitespace, operator,
+    ///       or semi - right now we're just ignoring that syntax error.
     return token{tag::numeric_constant, s};
   } else if (peek == static_cast<int>('\'')) {
-    // character literal must be enclosed withing the single quotes.
+    // handle character constant.
+    // A "character" is one to four ascii characters, enclosed in single quotes.
+    // The characters are stored in a single machine word, right-justified and
+    // zero-filled. [1]
+
+    // character constant must be enclosed withing the single quotes.
     if (static_cast<char>(peek = input.get()) == '\'')
       exit(EXIT_FAILURE);
 
-    token t{tag::char_constant, std::string{static_cast<char>(peek)}};
+    std::string s{static_cast<char>(peek)};
+    for (int i{1}; i++ < 4 && input.good() &&
+                   (peek = input.get()) != static_cast<int>('\'');
+         s += static_cast<char>(peek))
+      ;
 
-    // forgot closing single quote
-    if ((peek = input.get()) != static_cast<int>('\''))
-      exit(EXIT_FAILURE);
+    if (s.size() == 4)
+      peek = input.get();
+
+    // exceeds maximum length || forgot closing single quote
+    if (peek != static_cast<int>('\''))
+      err_exit_msg(s.size() == 4
+                       ? "character constant exceeds maximum length of 4 bytes"
+                       : "expected closing quote");
 
     // consume the single quote.
     peek = input.get();
 
-    return t;
+    return {tag::char_constant, s};
   } else if (peek == static_cast<int>('"')) {
+    // handle string literals.
+
     std::string s;
     for (; input.good() && (peek = input.get()) != static_cast<int>('"');
          s += static_cast<char>(peek))
@@ -209,7 +240,7 @@ token lex(std::istream &input) {
 
     // forgot closing double quote
     if (input.eof() && peek != static_cast<int>('"'))
-      exit(EXIT_FAILURE);
+      err_exit_msg("expected closing double quote");
 
     // consume the double quote.
     peek = input.get();
@@ -219,10 +250,13 @@ token lex(std::istream &input) {
     // handle comments.
     if ((peek = input.get()) == '*') {
       // consume all characters until end of comment.
-      for (; (peek = input.get()) != static_cast<int>('*') ||
-             (peek = input.get()) != static_cast<int>('/');
+      for (; input.good() && ((peek = input.get()) != static_cast<int>('*') ||
+                              (peek = input.get()) != static_cast<int>('/'));
            line += peek == static_cast<int>('\n'))
         ;
+
+      if (!input.good() && !input.eof())
+        err_exit_msg("stream error");
 
       // consume the closing slash.
       peek = input.get();
@@ -234,8 +268,8 @@ token lex(std::istream &input) {
     }
   }
 
-  // should this lexeme be the stringified ascii value? not sure...
-  token t{char_to_tag(peek), std::to_string(peek)};
+  // should the lexeme be the stringified ascii value? not sure...
+  token t{char_to_tag(peek), std::string{static_cast<char>(peek)}};
 
   if (input.good())
     peek = input.get();
@@ -249,3 +283,7 @@ int main() {
                  << (t.second ? *t.second : "") << ">\n")
     ;
 }
+
+///===---References------------------------------------------------------===///
+/// 1. bell-labs.com/usr/dmr/www/btut.html
+///===-------------------------------------------------------------------===///

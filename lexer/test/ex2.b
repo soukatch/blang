@@ -1,6 +1,3 @@
-/// NOTE: the lexer needs improvements to properly lex this file 
-(problems occur with the putchar() calls)
-
 /* The following program will calculate the constant e-2 to about
    4000 decimal digits, and print it 50 characters to the line in
    groups of 5 characters.  The method is simple output conversion
