@@ -147,7 +147,7 @@ inline tag char_to_tag(int peek) noexcept {
              : tag::unkown;
 }
 
-token scan(std::istream &input) {
+token lex(std::istream &input) {
   static int peek{static_cast<int>(' ')};
 
   // consume all whitespace
@@ -186,35 +186,52 @@ token scan(std::istream &input) {
     ///       whitespace or semi colon we return some kind of error - right now
     ///       we're just ignoring that syntax error.
     return token{tag::numeric_constant, s};
-  } else if (peek == '\'') {
+  } else if (peek == static_cast<int>('\'')) {
     // character literal must be enclosed withing the single quotes.
-    if ((peek = input.get()) == '\'')
+    if (static_cast<char>(peek = input.get()) == '\'')
       exit(EXIT_FAILURE);
 
     token t{tag::char_constant, std::string{static_cast<char>(peek)}};
 
     // forgot closing single quote
-    if ((peek = input.get()) != '\'')
+    if ((peek = input.get()) != static_cast<int>('\''))
       exit(EXIT_FAILURE);
 
     // consume the single quote.
     peek = input.get();
 
     return t;
-  } else if (peek == '"') {
+  } else if (peek == static_cast<int>('"')) {
     std::string s;
-    for (; input.good() && (peek = input.get()) != '"';
+    for (; input.good() && (peek = input.get()) != static_cast<int>('"');
          s += static_cast<char>(peek))
       ;
 
     // forgot closing double quote
-    if (input.eof() && peek != '"')
+    if (input.eof() && peek != static_cast<int>('"'))
       exit(EXIT_FAILURE);
 
     // consume the double quote.
     peek = input.get();
 
     return {tag::string_literal, s};
+  } else if (peek == static_cast<int>('/')) {
+    // handle comments.
+    if ((peek = input.get()) == '*') {
+      // consume all characters until end of comment.
+      for (; (peek = input.get()) != static_cast<int>('*') ||
+             (peek = input.get()) != static_cast<int>('/');
+           line += peek == static_cast<int>('\n'))
+        ;
+
+      // consume the closing slash.
+      peek = input.get();
+
+      return lex(input);
+    } else {
+      input.putback(peek);
+      peek = static_cast<int>('/');
+    }
   }
 
   // should this lexeme be the stringified ascii value? not sure...
@@ -227,7 +244,7 @@ token scan(std::istream &input) {
 }
 
 int main() {
-  for (token t; (t = scan(std::cin)).first != tag::eof;
+  for (token t; (t = lex(std::cin)).first != tag::eof;
        std::cout << line << ": <" << static_cast<int>(t.first) << ", "
                  << (t.second ? *t.second : "") << ">\n")
     ;
