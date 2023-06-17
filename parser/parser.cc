@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <cassert>
 #include <vector>
 
 namespace blang {
@@ -46,14 +47,14 @@ bool parser::definition0() {
 
 // name ( {name {, name}0}01 ) statement
 bool parser::definition1() {
-  if (!match(tag::name) || !match(tag::semi))
+  if (!match(tag::name) || !match(tag::l_paren))
     return false;
 
-  if (match(tag::name)) {
+  if (match(tag::name))
     for (; match(tag::comma);)
       if (!match(tag::name))
         return false;
-  }
+  --next_;
 
   return (match(tag::r_paren) && statement());
 }
@@ -87,13 +88,20 @@ bool parser::statement0() {
   if (!match(tag::auto_) || !match(tag::name))
     return false;
 
-  constant();
+  int save{next_};
+  if (!constant())
+    next_ = save;
 
-  for (; match(tag::comma); constant())
+  for (; match(tag::comma);) {
     if (!match(tag::name))
       return false;
+    save = next_;
+    if (!constant())
+      next_ = save;
+  }
+  --next_;
 
-  return match(tag::comma) && statement();
+  return match(tag::semi) && statement();
 }
 
 // extrn name {, name}0 ; statement
@@ -104,6 +112,7 @@ bool parser::statement1() {
   for (; match(tag::comma);)
     if (!match(tag::name))
       return false;
+  --next_;
 
   return match(tag::semi) && statement();
 }
@@ -125,14 +134,15 @@ bool parser::statement4() {
 
   for (; statement();)
     ;
+  --next_;
 
   return match(tag::r_brace);
 }
 
 // if ( rvalue ) statement {else statement}01
 bool parser::statement5() {
-  if (match(tag::if_) && match(tag::l_paren) && rvalue() &&
-      match(tag::r_paren) && statement())
+  if (!match(tag::if_) || !match(tag::l_paren) || !rvalue() ||
+      !match(tag::r_paren) || !statement())
     return false;
 
   if (match(tag::else_) && !statement())
@@ -163,17 +173,19 @@ bool parser::statement9() {
     return false;
 
   if (match(tag::l_paren)) {
-    if (!rvalue())
+    if (!rvalue() || !match(tag::r_paren))
       return false;
-    if (!match(tag::r_paren))
-      return false;
-  }
+  } else
+    --next_;
 
   return true;
 }
 
 // {rvalue}01 ;
-bool parser::statement10() { return rvalue() || match(tag::semi); }
+bool parser::statement10() {
+  const int save{next_};
+  return rvalue() || (next_ = save, match(tag::semi));
+}
 
 /*
 constant ::=
@@ -182,8 +194,10 @@ constant ::=
         " {char}0 "
 */
 bool parser::constant() {
-  return match(tag::numeric_constant) || match(tag::char_constant) ||
-         match(tag::string_literal);
+  const int save{next_};
+  return match(tag::numeric_constant) ||
+         (next_ = save, match(tag::char_constant)) ||
+         (next_ = save, match(tag::string_literal));
 }
 
 /*
@@ -253,6 +267,7 @@ bool parser::rvalue10() {
     for (; match(tag::comma);)
       if (!rvalue())
         return false;
+  --next_;
 
   return match(tag::r_paren);
 }
@@ -264,15 +279,21 @@ lvalue ::=
         rvalue [ rvalue ]
 */
 bool parser::lvalue() {
-  return match(tag::name) || (match(tag::star) && rvalue()) ||
-         (rvalue() && match(tag::l_square) && rvalue() && match(tag::r_square));
+  const int save{next_};
+  return match(tag::name) || (next_ = save, match(tag::star) && rvalue()) ||
+         (next_ = save,
+          rvalue() && match(tag::l_square) && rvalue() && match(tag::r_square));
 }
 
 /*
 assign ::=
         = {binary}01
 */
-bool parser::assign() { return binary() || true; }
+bool parser::assign() {
+  if (!binary())
+    --next_;
+  return true;
+}
 
 /*
 inc-dec ::=
@@ -280,7 +301,8 @@ inc-dec ::=
         --
 */
 bool parser::inc_dec() {
-  return match(tag::plusplus) || match(tag::minusminus);
+  const int save{next_};
+  return match(tag::plusplus) || (next_ = save, match(tag::minusminus));
 }
 
 /*
@@ -288,7 +310,10 @@ unary ::=
         -
         !
 */
-bool parser::unary() { return match(tag::minus) || match(tag::exclaim); }
+bool parser::unary() {
+  const int save{next_};
+  return match(tag::minus) || (next_ = save, match(tag::exclaim));
+}
 
 /*
 binary ::=
@@ -309,19 +334,30 @@ binary ::=
         /
 */
 bool parser::binary() {
-  return match(tag::pipe) || match(tag::amp) || match(tag::equalequal) ||
-         match(tag::exclaimequal) || match(tag::less) ||
-         match(tag::lessequal) || match(tag::greater) ||
-         match(tag::greaterequal) || match(tag::lessless) ||
-         match(tag::greatergreater) || match(tag::minus) || match(tag::plus) ||
-         match(tag::percent) || match(tag::star) || match(tag::slash);
+  const int save{next_};
+  return match(tag::pipe) || (next_ = save, match(tag::amp)) ||
+         (next_ = save, match(tag::equalequal)) ||
+         (next_ = save, match(tag::exclaimequal)) ||
+         (next_ = save, match(tag::less)) ||
+         (next_ = save, match(tag::lessequal)) ||
+         (next_ = save, match(tag::greater)) ||
+         (next_ = save, match(tag::greaterequal)) ||
+         (next_ = save, match(tag::lessless)) ||
+         (next_ = save, match(tag::greatergreater)) ||
+         (next_ = save, match(tag::minus)) ||
+         (next_ = save, match(tag::plus)) ||
+         (next_ = save, match(tag::percent)) ||
+         (next_ = save, match(tag::star)) || (next_ = save, match(tag::slash));
 }
 
 // ival ::=
 //	constant
 //	name
 bool parser::ival() { return constant() || match(tag::name); }
-bool parser::match(tag _t) { return v_[next_++].tag_ == _t; }
+bool parser::match(tag _t) {
+  assert(next_ < v_.size() && "matching with index out of bounds.");
+  return v_[next_++].tag_ == _t;
+}
 
 bool parser::operator()() { return program(); }
 } // namespace blang
