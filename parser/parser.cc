@@ -1,18 +1,20 @@
 #include "parser.h"
 
 #include <cassert>
-#include <vector>
 
 namespace blang {
 
-parser::parser(const std::vector<token> &_v) : v_{_v} {}
-parser::parser(std::vector<token> &&_v) noexcept : v_{std::move(_v)} {}
+parser::parser(const std::vector<token> &_tokens) : tokens_{_tokens} {}
+parser::parser(std::vector<token> &&_tokens) : tokens_{std::move(_tokens)} {}
+parser::parser(std::span<token> _tokens)
+    : tokens_{std::cbegin(_tokens), std::cend(_tokens)} {}
+parser::parser(token *first, token *last) : tokens_{first, last} {}
 
 // Should the rollback be implemented by the match/sub bodies? probably not...
 
 // program := {definition}_0
 bool parser::program() {
-  for (; next_ < v_.size();)
+  for (; next_ != std::cend(tokens_);)
     if (!definition())
       return false;
   return true;
@@ -22,7 +24,7 @@ bool parser::program() {
 //  name {[ {constant}01 ]}01 {ival {, ival}0}01 ;
 //	name ( {name {, name}0}01 ) statement
 bool parser::definition() {
-  int save{next_};
+  auto save{next_};
   return definition0() || (next_ = save, definition1());
 }
 
@@ -74,7 +76,7 @@ statement ::=
         {rvalue}01 ;
 */
 bool parser::statement() {
-  int save{next_};
+  auto save{next_};
   return statement0() || (next_ = save, statement1()) ||
          (next_ = save, statement2()) || (next_ = save, statement3()) ||
          (next_ = save, statement4()) || (next_ = save, statement5()) ||
@@ -88,7 +90,7 @@ bool parser::statement0() {
   if (!match(tag::auto_) || !match(tag::name))
     return false;
 
-  int save{next_};
+  auto save{next_};
   if (!constant())
     next_ = save;
 
@@ -183,7 +185,7 @@ bool parser::statement9() {
 
 // {rvalue}01 ;
 bool parser::statement10() {
-  const int save{next_};
+  auto save{next_};
   return rvalue() || (next_ = save, match(tag::semi));
 }
 
@@ -194,7 +196,7 @@ constant ::=
         " {char}0 "
 */
 bool parser::constant() {
-  const int save{next_};
+  auto save{next_};
   return match(tag::numeric_constant) ||
          (next_ = save, match(tag::char_constant)) ||
          (next_ = save, match(tag::string_literal));
@@ -215,7 +217,7 @@ rvalue ::=
         rvalue ( {rvalue {, rvalue}0 }01 )
 */
 bool parser::rvalue() {
-  int save{next_};
+  auto save{next_};
   return rvalue0() || (next_ = save, rvalue1()) || (next_ = save, rvalue2()) ||
          (next_ = save, rvalue3()) || (next_ = save, rvalue4()) ||
          (next_ = save, rvalue5()) || (next_ = save, rvalue6()) ||
@@ -279,7 +281,7 @@ lvalue ::=
         rvalue [ rvalue ]
 */
 bool parser::lvalue() {
-  const int save{next_};
+  auto save{next_};
   return match(tag::name) || (next_ = save, match(tag::star) && rvalue()) ||
          (next_ = save,
           rvalue() && match(tag::l_square) && rvalue() && match(tag::r_square));
@@ -301,7 +303,7 @@ inc-dec ::=
         --
 */
 bool parser::inc_dec() {
-  const int save{next_};
+  auto save{next_};
   return match(tag::plusplus) || (next_ = save, match(tag::minusminus));
 }
 
@@ -311,7 +313,7 @@ unary ::=
         !
 */
 bool parser::unary() {
-  const int save{next_};
+  auto save{next_};
   return match(tag::minus) || (next_ = save, match(tag::exclaim));
 }
 
@@ -334,7 +336,7 @@ binary ::=
         /
 */
 bool parser::binary() {
-  const int save{next_};
+  auto save{next_};
   return match(tag::pipe) || (next_ = save, match(tag::amp)) ||
          (next_ = save, match(tag::equalequal)) ||
          (next_ = save, match(tag::exclaimequal)) ||
@@ -355,8 +357,8 @@ bool parser::binary() {
 //	name
 bool parser::ival() { return constant() || match(tag::name); }
 bool parser::match(tag _t) {
-  assert(next_ < v_.size() && "matching with index out of bounds.");
-  return v_[next_++].tag_ == _t;
+  assert(next_ != std::cend(tokens_) && "matching with index out of bounds.");
+  return (*next_++).tag_ == _t;
 }
 
 bool parser::operator()() { return program(); }

@@ -1,13 +1,14 @@
 #pragma once
 
 #include "../lexer/lexer.h"
+#include <span>
 #include <vector>
 
 namespace blang {
 
 class parser final {
-  std::vector<token> v_;
-  int next_{0};
+  const std::vector<token> tokens_{};
+  std::vector<token>::const_iterator next_{std::cbegin(tokens_)};
 
   // program := {definition}_0
   bool program();
@@ -135,8 +136,10 @@ class parser final {
   bool match(tag _t);
 
 public:
-  parser(const std::vector<token> &_v);
-  parser(std::vector<token> &&_v) noexcept;
+  parser(const std::vector<token> &_tokens);
+  parser(std::vector<token> &&_tokens);
+  parser(std::span<token> _tokens);
+  parser(token *_first, token *_last);
   bool operator()();
 };
 
