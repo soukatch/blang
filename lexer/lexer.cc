@@ -46,16 +46,11 @@ void lexer::load(char *_buffer) noexcept {
 }
 
 bool lexer::load_and_switch() noexcept {
-  if (forward_ == buffer_a_ + BUFFER_SIZE - 1) {
-    load(buffer_b_);
-    forward_ = buffer_b_;
-    return true;
-  } else if (forward_ == buffer_b_ + BUFFER_SIZE - 1) {
-    load(buffer_a_);
-    forward_ = buffer_a_;
-    return true;
-  }
-  return false;
+  return forward_ == buffer_a_ + BUFFER_SIZE - 1
+             ? (load(buffer_b_), forward_ = buffer_b_, true)
+         : forward_ == buffer_b_ + BUFFER_SIZE - 1
+             ? (load(buffer_a_), forward_ = buffer_a_, true)
+             : false;
 }
 
 int lexer::comment() noexcept {
@@ -69,9 +64,8 @@ int lexer::comment() noexcept {
       ++line_;
       break;
     case '*':
-      if (*forward_++ == '/')
-        return 0;
-      --forward_;
+      if (*forward_ == '/')
+        return (++forward_, 0);
     }
   }
 }
@@ -84,7 +78,7 @@ token lexer::operator()() {
   begin_ = forward_;
   switch (std::string lexeme; *forward_++) {
   case EOF:
-    return load_and_switch() ? this->operator()() : tag::eof;
+    return load_and_switch() ? (*this)() : tag::eof;
   case '[':
     return tag::l_square;
   case ']':
@@ -100,10 +94,7 @@ token lexer::operator()() {
   case '.':
     return tag::period;
   case '&':
-    if (*forward_++ == '&')
-      return tag::ampamp;
-    --forward_;
-    return tag::amp;
+    return *forward_ == '&' ? (++forward_, tag::ampamp) : tag::amp;
   case '=':
     switch (*forward_++) {
     case '&':
@@ -119,14 +110,12 @@ token lexer::operator()() {
     case '%':
       return tag::percent;
     case '<':
-      if (*forward_++ == '<')
-        return tag::equallessless;
-      --forward_;
+      if (*forward_ == '<')
+        return (++forward_, tag::equallessless);
       break;
     case '>':
-      if (*forward_++ == '>')
-        return tag::equalgreatergreater;
-      --forward_;
+      if (*forward_ == '>')
+        return (++forward_, tag::equalgreatergreater);
       break;
     case '^':
       return tag::equalcaret;
@@ -135,60 +124,34 @@ token lexer::operator()() {
     case '=':
       return tag::equalequal;
     }
-    return tag::equal;
+    return (--forward_, tag::equal);
   case '*':
     return tag::star;
   case '+':
-    if (*forward_++ == '+')
-      return tag::plusplus;
-    --forward_;
-    return tag::plus;
+    return *forward_++ == '+' ? (++forward_, tag::plusplus) : tag::plus;
   case '-':
-    if (*forward_++ == '-')
-      return tag::minusminus;
-    --forward_;
-    return tag::minus;
+    return *forward_ == '-' ? (++forward_, tag::minusminus) : tag::minus;
   case '~':
     return tag::tilde;
   case '!':
-    if (*forward_++ == '=')
-      return tag::exclaimequal;
-    --forward_;
-    return tag::exclaim;
+    return *forward_ == '=' ? (++forward_, tag::exclaimequal) : tag::exclaim;
   case '/':
     // we have a comment
-    if (*forward_ == '*') {
-      comment();
-      return this->operator()();
-    }
-    return tag::slash;
+    return *forward_ == '*' ? (comment(), (*this)()) : tag::slash;
   case '%':
     return tag::percent;
   case '<':
-    switch (*forward_++) {
-    case '<':
-      return tag::lessless;
-    case '=':
-      return tag::lessequal;
-    }
-    --forward_;
-    return tag::less;
+    return *forward_ == '<'   ? (++forward_, tag::lessless)
+           : *forward_ == '=' ? (++forward_, tag::lessequal)
+                              : tag::less;
   case '>':
-    switch (*forward_++) {
-    case '>':
-      return tag::greatergreater;
-    case '=':
-      return tag::greaterequal;
-    }
-    --forward_;
-    return tag::greater;
+    return *forward_ == '>'   ? (forward_++, tag::greatergreater)
+           : *forward_ == '=' ? (forward_++, tag::greaterequal)
+                              : tag::greater;
   case '^':
     return tag::caret;
   case '|':
-    if (*forward_++ == '|')
-      return tag::pipepipe;
-    --forward_;
-    return tag::pipe;
+    return *forward_ == '|' ? (++forward_, tag::pipepipe) : tag::pipe;
   case '?':
     return tag::question;
   case ':':
@@ -209,29 +172,27 @@ token lexer::operator()() {
         break;
     }
     // need to consume the closing quote.
-    ++forward_;
-    return {tag::char_constant, std::move(lexeme)};
+    return (++forward_, token{tag::char_constant, std::move(lexeme)});
   case '"':
     for (int i{};;) {
-      begin_ = forward_;
-      for (; *forward_ != '"'; ++forward_)
+      for (begin_ = forward_; *forward_ != '"'; ++forward_)
         ;
       lexeme.insert(std::end(lexeme), begin_, forward_);
       if (*forward_ == '"' || (*forward_ == EOF && !load_and_switch()))
         break;
     }
-    ++forward_;
-    return {tag::string_literal, std::move(lexeme)};
+    return (++forward_, token{tag::string_literal, std::move(lexeme)});
   }
 
-  assert(begin_ == --forward_ && "begin and forward should be pointing to same "
-                                 "address after switch statement.");
+  assert(
+      begin_ == --forward_ &&
+      "begin and forward should point to same address after switch statement.");
 
   if (std::isalpha(static_cast<int>(*forward_)) != 0 || *forward_ == '_' ||
       *forward_ == '.') {
     // identifiers
     std::string lexeme;
-    for (int i{};;) {
+    for (int i{};; begin_ = forward_) {
       for (; i < MAX_ID_LENGTH &&
              (std::isalnum(static_cast<int>(*forward_)) != 0 ||
               *forward_ == '_' || *forward_ == '.');
@@ -240,21 +201,19 @@ token lexer::operator()() {
       lexeme.insert(std::end(lexeme), begin_, forward_);
       if (*forward_ != EOF || !load_and_switch())
         break;
-      begin_ = forward_;
     }
-    // should try an assert here?
+    // should we try an assert here?
     return words_.try_emplace(lexeme, tag::name, std::move(lexeme))
         .first->second;
   } else if (isdigit(static_cast<int>(*forward_)) != 0) {
     // numeric constants
     std::string number;
-    for (;;) {
+    for (;; begin_ = forward_) {
       for (; std::isdigit(static_cast<int>(*forward_)) != 0; ++forward_)
         ;
       number.insert(std::end(number), begin_, forward_);
       if (*forward_ != EOF || !load_and_switch())
         break;
-      begin_ = forward_;
     }
     return {tag::numeric_constant, std::move(number)};
   }
