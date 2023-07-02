@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
   for (blang::token t; (t = l()).tag_ != blang::tag::eof;
        v.push_back(std::move(t)))
     ;
-
+  v.emplace_back(blang::tag::eof);
   blang::parser p{std::move(v)};
   std::cout << std::boolalpha << p() << std::endl;
 }

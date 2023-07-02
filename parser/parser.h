@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../lexer/lexer.h"
-#include <span>
 #include <vector>
 
 namespace blang {
@@ -138,7 +137,6 @@ class parser final {
 public:
   parser(const std::vector<token> &_tokens);
   parser(std::vector<token> &&_tokens);
-  parser(std::span<token> _tokens);
   parser(token *_first, token *_last);
   bool operator()();
 };

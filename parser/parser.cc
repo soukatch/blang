@@ -6,59 +6,63 @@ namespace blang {
 
 parser::parser(const std::vector<token> &_tokens) : tokens_{_tokens} {}
 parser::parser(std::vector<token> &&_tokens) : tokens_{std::move(_tokens)} {}
-parser::parser(std::span<token> _tokens)
-    : tokens_{std::cbegin(_tokens), std::cend(_tokens)} {}
 parser::parser(token *first, token *last) : tokens_{first, last} {}
 
 // Should the rollback be implemented by the match/sub bodies? probably not...
 
 // program := {definition}_0
 bool parser::program() {
-  for (; next_ != std::cend(tokens_);)
-    if (!definition())
-      return false;
-  return true;
+  for (; definition();)
+    ;
+  return match(tag::eof);
 }
 
 // definition ::=
 //  name {[ {constant}01 ]}01 {ival {, ival}0}01 ;
 //	name ( {name {, name}0}01 ) statement
 bool parser::definition() {
+  if (!match(tag::name))
+    return false;
+
   auto save{next_};
   return definition0() || (next_ = save, definition1());
 }
 
 // name {[ {constant}01 ]}01 {ival {, ival}0}01 ;
 bool parser::definition0() {
-  if (!match(tag::name))
-    return false;
-
+  auto save{next_};
   if (match(tag::l_square)) {
-    constant();
+    if (!constant())
+      --next_;
     if (!match(tag::r_square))
-      return false;
-  }
+      next_ = save;
+  } else
+    --next_;
 
+  save = next_;
   if (ival())
-    for (; match(tag::comma);)
-      if (!ival())
-        return false;
+    for (save = next_; match(tag::comma) && ival(); save = next_)
+      ;
+
+  next_ = save;
 
   return match(tag::semi);
 }
 
 // name ( {name {, name}0}01 ) statement
 bool parser::definition1() {
-  if (!match(tag::name) || !match(tag::l_paren))
+  if (!match(tag::l_paren))
     return false;
 
-  if (match(tag::name))
-    for (; match(tag::comma);)
-      if (!match(tag::name))
-        return false;
-  --next_;
+  auto save{next_};
 
-  return (match(tag::r_paren) && statement());
+  if (match(tag::name))
+    for (save = next_; match(tag::comma) && match(tag::name); save = next_)
+      ;
+
+  next_ = save;
+
+  return match(tag::r_paren) && statement();
 }
 
 /*
@@ -91,17 +95,15 @@ bool parser::statement0() {
     return false;
 
   auto save{next_};
+
   if (!constant())
     next_ = save;
 
-  for (; match(tag::comma);) {
-    if (!match(tag::name))
-      return false;
-    save = next_;
+  for (save = next_; match(tag::comma) && match(tag::name); save = next_)
     if (!constant())
       next_ = save;
-  }
-  --next_;
+
+  next_ = save;
 
   return match(tag::semi) && statement();
 }
@@ -111,10 +113,12 @@ bool parser::statement1() {
   if (!match(tag::extrn_) || !match(tag::name))
     return false;
 
-  for (; match(tag::comma);)
-    if (!match(tag::name))
-      return false;
-  --next_;
+  auto save{next_};
+
+  for (; match(tag::comma) && match(tag::name); save = next_)
+    ;
+
+  next_ = save;
 
   return match(tag::semi) && statement();
 }
@@ -134,9 +138,12 @@ bool parser::statement4() {
   if (!match(tag::l_brace))
     return false;
 
-  for (; statement();)
+  auto save{next_};
+
+  for (; statement(); save = next_)
     ;
-  --next_;
+
+  next_ = save;
 
   return match(tag::r_brace);
 }
@@ -147,8 +154,10 @@ bool parser::statement5() {
       !match(tag::r_paren) || !statement())
     return false;
 
-  if (match(tag::else_) && !statement())
-    return false;
+  auto save{next_};
+
+  if (!match(tag::else_) || !statement())
+    next_ = save;
 
   return true;
 }
@@ -174,19 +183,22 @@ bool parser::statement9() {
   if (!match(tag::return_))
     return false;
 
-  if (match(tag::l_paren)) {
-    if (!rvalue() || !match(tag::r_paren))
-      return false;
-  } else
-    --next_;
+  auto save{next_};
 
-  return true;
+  if (!match(tag::l_paren) || !rvalue() || !match(tag::r_paren))
+    next_ = save;
+
+  return match(tag::semi);
 }
 
 // {rvalue}01 ;
 bool parser::statement10() {
   auto save{next_};
-  return rvalue() || (next_ = save, match(tag::semi));
+
+  if (!rvalue())
+    next_ = save;
+
+  return match(tag::semi);
 }
 
 /*
@@ -231,7 +243,7 @@ bool parser::rvalue0() {
 }
 
 // lvalue
-bool parser::rvalue1() { return lvalue(); }
+bool parser::rvalue5() { return lvalue(); }
 
 // constant
 bool parser::rvalue2() { return constant(); }
@@ -243,7 +255,7 @@ bool parser::rvalue3() { return lvalue() && assign() && rvalue(); }
 bool parser::rvalue4() { return inc_dec() && lvalue(); }
 
 // lvalue inc-dec
-bool parser::rvalue5() { return lvalue() && inc_dec(); }
+bool parser::rvalue1() { return lvalue() && inc_dec(); }
 
 // unary rvalue
 bool parser::rvalue6() { return unary() && rvalue(); }
@@ -265,11 +277,11 @@ bool parser::rvalue10() {
   if (!rvalue() || !match(tag::l_paren))
     return false;
 
+  auto save{next_};
   if (rvalue())
-    for (; match(tag::comma);)
-      if (!rvalue())
-        return false;
-  --next_;
+    for (save = next_; match(tag::comma) && rvalue(); save = next_)
+      ;
+  next_ = save;
 
   return match(tag::r_paren);
 }
@@ -291,11 +303,7 @@ bool parser::lvalue() {
 assign ::=
         = {binary}01
 */
-bool parser::assign() {
-  if (!binary())
-    --next_;
-  return true;
-}
+bool parser::assign() { return binary() ? true : (--next_, true); }
 
 /*
 inc-dec ::=
@@ -355,11 +363,11 @@ bool parser::binary() {
 // ival ::=
 //	constant
 //	name
-bool parser::ival() { return constant() || match(tag::name); }
-bool parser::match(tag _t) {
-  assert(next_ != std::cend(tokens_) && "matching with index out of bounds.");
-  return (*next_++).tag_ == _t;
+bool parser::ival() {
+  auto save{next_};
+  return constant() || (next_ = save, match(tag::name));
 }
+bool parser::match(tag _t) { return (*next_++).tag_ == _t; }
 
 bool parser::operator()() { return program(); }
 } // namespace blang
