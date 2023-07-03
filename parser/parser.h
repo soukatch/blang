@@ -70,12 +70,13 @@ class parser final {
   bool rvalue6();
   // & lvalue
   bool rvalue7();
-  // rvalue binary rvalue
-  bool rvalue8();
-  // rvalue ? rvalue : rvalue
-  bool rvalue9();
-  // rvalue ( {rvalue {, rvalue}0 }01 )
+  //   // rvalue binary rvalue
+  //   bool rvalue8();
+  //   // rvalue ? rvalue : rvalue
+  //   bool rvalue9();
+  //   // rvalue ( {rvalue {, rvalue}0 }01 )
   bool rvalue10();
+  bool rprime();
 
   /*
   lvalue ::=
@@ -84,6 +85,7 @@ class parser final {
           rvalue [ rvalue ]
   */
   bool lvalue();
+  bool lprime();
 
   /*
   assign ::=

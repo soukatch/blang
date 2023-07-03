@@ -12,9 +12,10 @@ parser::parser(token *first, token *last) : tokens_{first, last} {}
 
 // program := {definition}_0
 bool parser::program() {
-  for (; definition();)
+  auto save{next_};
+  for (; definition(); save = next_)
     ;
-  return match(tag::eof);
+  return (next_ = save, match(tag::eof));
 }
 
 // definition ::=
@@ -233,48 +234,47 @@ bool parser::rvalue() {
   return rvalue0() || (next_ = save, rvalue1()) || (next_ = save, rvalue2()) ||
          (next_ = save, rvalue3()) || (next_ = save, rvalue4()) ||
          (next_ = save, rvalue5()) || (next_ = save, rvalue6()) ||
-         (next_ = save, rvalue7()) || (next_ = save, rvalue8()) ||
-         (next_ = save, rvalue9()) || (next_ = save, rvalue10());
+         (next_ = save, rvalue7());
 }
 
 // ( rvalue )
 bool parser::rvalue0() {
-  return match(tag::l_paren) && rvalue() && match(tag::r_paren);
+  return match(tag::l_paren) && rvalue() && match(tag::r_paren) && rprime();
 }
-
-// lvalue
-bool parser::rvalue5() { return lvalue(); }
-
-// constant
-bool parser::rvalue2() { return constant(); }
 
 // lvalue assign rvalue
-bool parser::rvalue3() { return lvalue() && assign() && rvalue(); }
+bool parser::rvalue1() { return lvalue() && assign() && rvalue() && rprime(); }
+
+// constant
+bool parser::rvalue2() { return constant() && rprime(); }
 
 // inc-dec lvalue
-bool parser::rvalue4() { return inc_dec() && lvalue(); }
+bool parser::rvalue3() { return inc_dec() && lvalue() && rprime(); }
+
+// lvalue
+bool parser::rvalue4() { return lvalue() && rprime(); }
 
 // lvalue inc-dec
-bool parser::rvalue1() { return lvalue() && inc_dec(); }
+bool parser::rvalue5() { return lvalue() && inc_dec() && rprime(); }
 
 // unary rvalue
-bool parser::rvalue6() { return unary() && rvalue(); }
+bool parser::rvalue6() { return unary() && rvalue() && rprime(); }
 
 // & lvalue
-bool parser::rvalue7() { return match(tag::amp) && lvalue(); }
+bool parser::rvalue7() { return match(tag::amp) && lvalue() && rprime(); }
 
-// rvalue binary rvalue
-bool parser::rvalue8() { return rvalue() && binary() && rvalue(); }
+// // rvalue binary rvalue
+// bool parser::rvalue8() { return rvalue() && binary() && rvalue(); }
 
-// rvalue ? rvalue : rvalue
-bool parser::rvalue9() {
-  return rvalue() && match(tag::question) && rvalue() && match(tag::colon) &&
-         rvalue();
-}
+// // rvalue ? rvalue : rvalue
+// bool parser::rvalue9() {
+//   return rvalue() && match(tag::question) && rvalue() && match(tag::colon) &&
+//          rvalue();
+// }
 
 // rvalue ( {rvalue {, rvalue}0 }01 )
 bool parser::rvalue10() {
-  if (!rvalue() || !match(tag::l_paren))
+  if (!match(tag::l_paren))
     return false;
 
   auto save{next_};
@@ -286,6 +286,14 @@ bool parser::rvalue10() {
   return match(tag::r_paren);
 }
 
+bool parser::rprime() {
+  auto save{next_};
+  return (binary() && rvalue() && rprime()) ||
+         (next_ = save, match(tag::question) && rvalue() && match(tag::colon) &&
+                            rvalue() && rprime()) ||
+         (next_ = save, rvalue10() && rprime()) || (next_ = save, true);
+}
+
 /*
 lvalue ::=
         name
@@ -294,16 +302,31 @@ lvalue ::=
 */
 bool parser::lvalue() {
   auto save{next_};
-  return match(tag::name) || (next_ = save, match(tag::star) && rvalue()) ||
-         (next_ = save,
-          rvalue() && match(tag::l_square) && rvalue() && match(tag::r_square));
+  return (match(tag::name) && lprime()) ||
+         (next_ = save, match(tag::star) && rvalue() && lprime());
+}
+
+bool parser::lprime() {
+  auto save{next_};
+  return (assign() && rvalue() && match(tag::l_square) && rvalue() &&
+          match(tag::r_square) && lprime()) ||
+         (next_ = save, inc_dec() && match(tag::l_square) && rvalue() &&
+                            match(tag::r_square) && lprime()) ||
+         (next_ = save, match(tag::l_square) && rvalue() &&
+                            match(tag::r_square) && lprime()) ||
+         (next_ = save, true);
 }
 
 /*
 assign ::=
         = {binary}01
 */
-bool parser::assign() { return binary() ? true : (--next_, true); }
+bool parser::assign() {
+  if (!match(tag::equal))
+    return false;
+  auto save{next_};
+  return binary() ? true : (next_ = save, true);
+}
 
 /*
 inc-dec ::=
