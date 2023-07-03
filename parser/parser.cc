@@ -45,9 +45,7 @@ bool parser::definition0() {
     for (save = next_; match(tag::comma) && ival(); save = next_)
       ;
 
-  next_ = save;
-
-  return match(tag::semi);
+  return (next_ = save, match(tag::semi));
 }
 
 // name ( {name {, name}0}01 ) statement
@@ -61,9 +59,7 @@ bool parser::definition1() {
     for (save = next_; match(tag::comma) && match(tag::name); save = next_)
       ;
 
-  next_ = save;
-
-  return match(tag::r_paren) && statement();
+  return (next_ = save, match(tag::r_paren)) && statement();
 }
 
 /*
@@ -101,12 +97,10 @@ bool parser::statement0() {
     next_ = save;
 
   for (save = next_; match(tag::comma) && match(tag::name); save = next_)
-    if (!constant())
+    if (save = next_; !constant())
       next_ = save;
 
-  next_ = save;
-
-  return match(tag::semi) && statement();
+  return (next_ = save, match(tag::semi)) && statement();
 }
 
 // extrn name {, name}0 ; statement
@@ -119,9 +113,7 @@ bool parser::statement1() {
   for (; match(tag::comma) && match(tag::name); save = next_)
     ;
 
-  next_ = save;
-
-  return match(tag::semi) && statement();
+  return (next_ = save, match(tag::semi)) && statement();
 }
 
 // name : statement
@@ -144,9 +136,7 @@ bool parser::statement4() {
   for (; statement(); save = next_)
     ;
 
-  next_ = save;
-
-  return match(tag::r_brace);
+  return (next_ = save, match(tag::r_brace));
 }
 
 // if ( rvalue ) statement {else statement}01
@@ -217,51 +207,53 @@ bool parser::constant() {
 
 /*
 rvalue ::=
-        ( rvalue )
-        lvalue
-        constant
-        lvalue assign rvalue
-        inc-dec lvalue
-        lvalue inc-dec
-        unary rvalue
-        & lvalue
-        rvalue binary rvalue
-        rvalue ? rvalue : rvalue
-        rvalue ( {rvalue {, rvalue}0 }01 )
+        ( rvalue ) rprime
+        lvalue rprime
+        constant rprime
+        lvalue assign rvalue rprime
+        inc-dec lvalue rprime
+        lvalue inc-dec rprime
+        unary rvalue rprime
+        & lvalue rprime
+
+NB: We needed to eliminate the direct left recursion from the original grammar.
 */
 bool parser::rvalue() {
   auto save{next_};
-  return rvalue0() || (next_ = save, rvalue1()) || (next_ = save, rvalue2()) ||
-         (next_ = save, rvalue3()) || (next_ = save, rvalue4()) ||
-         (next_ = save, rvalue5()) || (next_ = save, rvalue6()) ||
-         (next_ = save, rvalue7());
+  return (rvalue0() && rprime()) || (next_ = save, rvalue1() && rprime()) ||
+         (next_ = save, rvalue2() && rprime()) ||
+         (next_ = save, rvalue3() && rprime()) ||
+         (next_ = save, rvalue4() && rprime()) ||
+         (next_ = save, rvalue5() && rprime()) ||
+         (next_ = save, rvalue6() && rprime()) ||
+         (next_ = save, rvalue7() && rprime());
 }
 
 // ( rvalue )
 bool parser::rvalue0() {
-  return match(tag::l_paren) && rvalue() && match(tag::r_paren) && rprime();
+  return match(tag::l_paren) && rvalue() && match(tag::r_paren);
 }
 
 // lvalue assign rvalue
-bool parser::rvalue1() { return lvalue() && assign() && rvalue() && rprime(); }
+bool parser::rvalue1() { return lvalue() && assign() && rvalue(); }
 
 // constant
-bool parser::rvalue2() { return constant() && rprime(); }
+bool parser::rvalue2() { return constant(); }
 
 // inc-dec lvalue
-bool parser::rvalue3() { return inc_dec() && lvalue() && rprime(); }
-
-// lvalue
-bool parser::rvalue4() { return lvalue() && rprime(); }
+bool parser::rvalue3() { return inc_dec() && lvalue(); }
 
 // lvalue inc-dec
-bool parser::rvalue5() { return lvalue() && inc_dec() && rprime(); }
+bool parser::rvalue4() { return lvalue() && inc_dec(); }
+
+// lvalue
+bool parser::rvalue5() { return lvalue(); }
 
 // unary rvalue
-bool parser::rvalue6() { return unary() && rvalue() && rprime(); }
+bool parser::rvalue6() { return unary() && rvalue(); }
 
 // & lvalue
-bool parser::rvalue7() { return match(tag::amp) && lvalue() && rprime(); }
+bool parser::rvalue7() { return match(tag::amp) && lvalue(); }
 
 // // rvalue binary rvalue
 // bool parser::rvalue8() { return rvalue() && binary() && rvalue(); }
@@ -281,9 +273,8 @@ bool parser::rvalue10() {
   if (rvalue())
     for (save = next_; match(tag::comma) && rvalue(); save = next_)
       ;
-  next_ = save;
 
-  return match(tag::r_paren);
+  return (next_ = save, match(tag::r_paren));
 }
 
 bool parser::rprime() {
@@ -328,44 +319,19 @@ bool parser::assign() {
   return binary() ? true : (next_ = save, true);
 }
 
-/*
-inc-dec ::=
-        ++
-        --
-*/
 bool parser::inc_dec() {
   auto save{next_};
   return match(tag::plusplus) || (next_ = save, match(tag::minusminus));
 }
 
-/*
-unary ::=
-        -
-        !
-*/
 bool parser::unary() {
   auto save{next_};
   return match(tag::minus) || (next_ = save, match(tag::exclaim));
 }
 
-/*
-binary ::=
-        |
-        &
-        ==
-        !=
-        <
-        <=
-        >
-        >=
-        <<
-        >>
-        -
-        +
-        %
-        *
-        /
-*/
+/// TODO: should we remove the next_ = save, and just decrement next_? might be
+/// faster, who knows.
+
 bool parser::binary() {
   auto save{next_};
   return match(tag::pipe) || (next_ = save, match(tag::amp)) ||
@@ -390,7 +356,11 @@ bool parser::ival() {
   auto save{next_};
   return constant() || (next_ = save, match(tag::name));
 }
-bool parser::match(tag _t) { return (*next_++).tag_ == _t; }
+
+bool parser::match(tag _t) {
+  max_next_ = std::max(next(), max_next_);
+  return (*next_++).tag_ == _t;
+}
 
 bool parser::operator()() { return program(); }
 } // namespace blang

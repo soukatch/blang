@@ -23,5 +23,7 @@ int main(int argc, char **argv) {
     ;
   v.emplace_back(blang::tag::eof);
   blang::parser p{std::move(v)};
-  std::cout << std::boolalpha << p() << std::endl;
+
+  p();
+  std::cout << p.max_next() << std::endl;
 }

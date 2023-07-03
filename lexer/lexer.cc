@@ -128,7 +128,7 @@ token lexer::operator()() {
   case '*':
     return tag::star;
   case '+':
-    return *forward_++ == '+' ? (++forward_, tag::plusplus) : tag::plus;
+    return *forward_ == '+' ? (++forward_, tag::plusplus) : tag::plus;
   case '-':
     return *forward_ == '-' ? (++forward_, tag::minusminus) : tag::minus;
   case '~':
@@ -145,8 +145,8 @@ token lexer::operator()() {
            : *forward_ == '=' ? (++forward_, tag::lessequal)
                               : tag::less;
   case '>':
-    return *forward_ == '>'   ? (forward_++, tag::greatergreater)
-           : *forward_ == '=' ? (forward_++, tag::greaterequal)
+    return *forward_ == '>'   ? (++forward_, tag::greatergreater)
+           : *forward_ == '=' ? (++forward_, tag::greaterequal)
                               : tag::greater;
   case '^':
     return tag::caret;

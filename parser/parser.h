@@ -8,6 +8,7 @@ namespace blang {
 class parser final {
   const std::vector<token> tokens_{};
   std::vector<token>::const_iterator next_{std::cbegin(tokens_)};
+  std::vector<token>::difference_type max_next_{0};
 
   // program := {definition}_0
   bool program();
@@ -141,6 +142,17 @@ public:
   parser(std::vector<token> &&_tokens);
   parser(token *_first, token *_last);
   bool operator()();
+  constexpr inline decltype(auto) next() const {
+    return std::distance(std::cbegin(tokens_), next_);
+  }
+
+  constexpr inline const decltype(max_next_) &max_next() const & noexcept {
+    return max_next_;
+  }
+
+  constexpr inline decltype(auto) max_next() && noexcept {
+    return std::move(max_next_);
+  }
 };
 
 // Should the rollback be implemented by the match/sub bodies? probably not...
